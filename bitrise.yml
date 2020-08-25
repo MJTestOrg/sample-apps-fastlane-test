@@ -1,0 +1,147 @@
+---
+format_version: '8'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: ios
+trigger_map:
+- push_branch: feature-*
+  workflow: primary
+- push_branch: release-*
+  workflow: deploy
+- pull_request_source_branch: "*"
+  workflow: primary
+workflows:
+  deploy:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - certificate-and-profile-installer@1: {}
+    - xcode-test@2:
+        inputs:
+        - project_path: "$BITRISE_PROJECT_PATH"
+        - scheme: "$BITRISE_SCHEME"
+    - xcode-archive@2:
+        inputs:
+        - project_path: "$BITRISE_PROJECT_PATH"
+        - scheme: "$BITRISE_SCHEME"
+        - export_method: "$BITRISE_EXPORT_METHOD"
+    - deploy-to-bitrise-io@1: {}
+    - cache-push@2: {}
+    envs:
+    - opts:
+        is_expand: false
+      BITRISE_EXPORT_METHOD: release
+  primary:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - cache-pull@2: {}
+    - cocoapods-install@1: {}
+    - fastlane@2:
+        inputs:
+        - lane: test
+    - virtual-device-testing-for-ios@0:
+        inputs:
+        - test_devices: |-
+            iphone7,12.3,en,portrait
+            iphone8,12.3,en,portrait
+    - build-router-start@0:
+        inputs:
+        - workflows: |
+            unit_test
+            ui_test
+            lint
+    - script@1:
+        title: UI TEsts
+        inputs:
+        - content: |+
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            fastlane run test
+
+    - build-router-wait@0:
+        inputs:
+        - abort_on_fail: 'yes'
+        - build_artifacts_save_path: "/tmp/"
+    - certificate-and-profile-installer@1: {}
+    - xcode-test@2:
+        inputs:
+        - project_path: "$BITRISE_PROJECT_PATH"
+        - scheme: ''
+    - deploy-to-bitrise-io@1: {}
+    - cache-push@2:
+        inputs:
+        - cache_paths: "$BITRISE_CACHE_DIR"
+  ui_test:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - cache-pull@2: {}
+    - cocoapods-install@1: {}
+    - fastlane@2:
+        inputs:
+        - lane: test
+    - build-router-start@0:
+        inputs:
+        - workflows: |
+            unit_test
+            ui_test
+            lint
+    - virtual-device-testing-for-ios@0:
+        inputs:
+        - test_devices: |-
+            iphone7,12.3,en,portrait
+            iphone8,12.3,en,portrait
+    - build-router-start@0:
+        inputs:
+        - workflows: |
+            unit_test
+            ui_test
+            lint
+    - script@1:
+        title: Do anything with Script step
+        inputs:
+        - content: |+
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            fastlane run test
+
+    - certificate-and-profile-installer@1: {}
+    - xcode-test@2:
+        inputs:
+        - project_path: "$BITRISE_PROJECT_PATH"
+        - scheme: ''
+    - deploy-to-bitrise-io@1: {}
+    - cache-push@2:
+        inputs:
+        - cache_paths: "$BITRISE_CACHE_DIR"
+  sample:
+    steps:
+    - git::https://github.com/DamienBitrise/bitrise-script-step-example.git@master:
+        title: Bitrise Script Step Example
+        inputs:
+        - message: Hello World!
+app:
+  envs:
+  - opts:
+      is_expand: false
+    BITRISE_PROJECT_PATH: sample-apps-fastlane-test.xcodeproj
+  - opts:
+      is_expand: false
+    BITRISE_SCHEME: sample-apps-fastlane-test
+  - opts:
+      is_expand: false
+    BITRISE_EXPORT_METHOD: development
